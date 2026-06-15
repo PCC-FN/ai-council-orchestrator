@@ -10,6 +10,14 @@ from app.events.service import EventService
 from app.models.db_models import WorkerRegistration
 
 
+def _ensure_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value
+
+
 class WorkerService:
     """Register remote coding workers and track health."""
 
@@ -70,16 +78,19 @@ class WorkerService:
         if not online_only:
             return workers
         cutoff = datetime.now(UTC) - timedelta(seconds=self.HEARTBEAT_TIMEOUT_SEC)
-        return [w for w in workers if w.last_heartbeat_at and w.last_heartbeat_at >= cutoff]
+        return [
+            w
+            for w in workers
+            if _ensure_utc(w.last_heartbeat_at) and _ensure_utc(w.last_heartbeat_at) >= cutoff
+        ]
 
     async def mark_stale_offline(self) -> int:
         cutoff = datetime.now(UTC) - timedelta(seconds=self.HEARTBEAT_TIMEOUT_SEC)
         r = await self.db.execute(select(WorkerRegistration))
         count = 0
         for w in r.scalars().all():
-            if w.status != "offline" and (
-                not w.last_heartbeat_at or w.last_heartbeat_at < cutoff
-            ):
+            heartbeat = _ensure_utc(w.last_heartbeat_at)
+            if w.status != "offline" and (not heartbeat or heartbeat < cutoff):
                 w.status = "offline"
                 count += 1
                 await self.events.emit(
