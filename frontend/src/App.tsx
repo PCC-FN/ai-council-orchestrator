@@ -3,6 +3,7 @@ import Dashboard from "./pages/Dashboard";
 import Projects from "./pages/Projects";
 import NewSession from "./pages/NewSession";
 import SessionDetail from "./pages/SessionDetail";
+import SettingsPage from "./pages/Settings";
 
 function LegacySessionRedirect() {
   const { sessionId } = useParams();
@@ -16,6 +17,7 @@ export default function App() {
       <Route path="/projects" element={<Projects />} />
       <Route path="/sessions/new" element={<NewSession />} />
       <Route path="/sessions/:sessionId" element={<SessionDetail />} />
+      <Route path="/settings" element={<SettingsPage />} />
       {/* Backwards-compatible alias for the old URL scheme. */}
       <Route path="/session/:sessionId" element={<LegacySessionRedirect />} />
       <Route path="*" element={<Navigate to="/" replace />} />

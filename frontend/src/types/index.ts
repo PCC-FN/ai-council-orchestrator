@@ -108,14 +108,43 @@ export type SessionInput = {
   constraints?: string;
 };
 
+export type ProviderKeyInfo = {
+  key: string;
+  label: string;
+  description: string;
+  env_var: string;
+  placeholder: string;
+  configured: boolean;
+  source: "env" | "database" | "none";
+  masked_hint: string | null;
+  available: boolean;
+};
+
 export type RuntimeSettings = {
   product?: string;
   compose2_mode: "manual" | "api";
   use_mock_providers: boolean;
   mock_active: boolean;
+  default_openai_model: string;
+  default_anthropic_model: string;
+  compose2_base_url: string;
   openai_configured: boolean;
   anthropic_configured: boolean;
   compose2_configured: boolean;
+  provider_keys: ProviderKeyInfo[];
+};
+
+export type SettingsUpdate = {
+  compose2_mode?: "manual" | "api";
+  use_mock_providers?: boolean;
+  default_openai_model?: string;
+  default_anthropic_model?: string;
+  compose2_base_url?: string;
+  openai_api_key?: string;
+  anthropic_api_key?: string;
+  compose2_api_key?: string;
+  gemini_api_key?: string;
+  github_token?: string;
 };
 
 /** Lifecycle states an agent can be in within a round (for the live UI). */

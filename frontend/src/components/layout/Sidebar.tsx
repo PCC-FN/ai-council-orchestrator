@@ -7,6 +7,7 @@ const NAV = [
   { to: "/", label: "Dashboard", end: true, icon: "▦" },
   { to: "/projects", label: "Projekte", icon: "▤" },
   { to: "/sessions/new", label: "Neues Feature", icon: "＋" },
+  { to: "/settings", label: "Einstellungen", icon: "⚙" },
 ];
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
@@ -57,6 +58,13 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             <p className="mt-1">
               Keine API-Keys gesetzt — Agenten liefern realistische Beispielantworten.
             </p>
+            <NavLink
+              to="/settings"
+              onClick={onNavigate}
+              className="mt-2 inline-block font-medium text-amber-900 underline dark:text-amber-100"
+            >
+              API-Keys in Einstellungen hinterlegen →
+            </NavLink>
           </div>
         )}
         {settings && (

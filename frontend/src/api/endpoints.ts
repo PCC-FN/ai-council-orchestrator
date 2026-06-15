@@ -9,6 +9,7 @@ import type {
   ProjectInput,
   RuntimeSettings,
   SessionInput,
+  SettingsUpdate,
 } from "../types";
 
 const json = (body: unknown): RequestInit => ({
@@ -19,6 +20,8 @@ const json = (body: unknown): RequestInit => ({
 export const Api = {
   // Runtime / settings
   getSettings: () => api<RuntimeSettings>("/settings"),
+  updateSettings: (body: SettingsUpdate) =>
+    api<RuntimeSettings>("/settings", { method: "PUT", body: JSON.stringify(body) }),
 
   // Projects
   listProjects: () => api<Project[]>("/projects"),

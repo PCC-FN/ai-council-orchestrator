@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_db_overrides: dict[str, Any] = {}
 
 
 class Settings(BaseSettings):
@@ -15,6 +17,8 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     anthropic_api_key: str = ""
     compose2_api_key: str = ""
+    gemini_api_key: str = ""
+    github_token: str = ""
 
     default_openai_model: str = "gpt-4o-mini"
     default_anthropic_model: str = "claude-3-5-sonnet-20241022"
@@ -28,5 +32,17 @@ class Settings(BaseSettings):
 
 
 @lru_cache
-def get_settings() -> Settings:
+def get_env_settings() -> Settings:
     return Settings()
+
+
+def set_db_settings_overrides(overrides: dict[str, Any]) -> None:
+    global _db_overrides
+    _db_overrides = dict(overrides)
+
+
+def get_settings() -> Settings:
+    base = get_env_settings()
+    if _db_overrides:
+        return base.model_copy(update=_db_overrides)
+    return base
