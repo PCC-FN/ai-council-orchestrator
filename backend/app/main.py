@@ -10,6 +10,7 @@ from app.api.routes import router, session_router, set_ws, websocket_session
 from app.api.websocket_manager import WSManager
 from app.config import get_settings
 from app.database import init_db
+from app.services.seed import seed_if_empty
 
 ws = WSManager()
 
@@ -17,6 +18,7 @@ ws = WSManager()
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     await init_db()
+    await seed_if_empty()
     set_ws(ws)
     yield
 
@@ -40,6 +42,23 @@ app.include_router(session_router)
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/settings")
+async def runtime_settings():
+    """Non-secret runtime info the frontend needs (never expose API keys)."""
+    s = get_settings()
+    using_mock = s.use_mock_providers or not (
+        s.openai_api_key.strip() and s.anthropic_api_key.strip()
+    )
+    return {
+        "compose2_mode": s.compose2_mode,
+        "use_mock_providers": s.use_mock_providers,
+        "mock_active": using_mock,
+        "openai_configured": bool(s.openai_api_key.strip()),
+        "anthropic_configured": bool(s.anthropic_api_key.strip()),
+        "compose2_configured": bool(s.compose2_api_key.strip()),
+    }
 
 
 @app.websocket("/ws/sessions/{session_id}")

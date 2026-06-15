@@ -1,136 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
-  font-family: "Segoe UI", system-ui, sans-serif;
-  background: #0f1419;
-  color: #e7edf4;
-  line-height: 1.45;
+  color-scheme: light dark;
 }
 
-* {
-  box-sizing: border-box;
+html,
+body,
+#root {
+  height: 100%;
 }
 
 body {
-  margin: 0;
+  @apply bg-slate-100 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
 }
 
-a {
-  color: #7ab8ff;
+/* Compact, readable markdown rendering inside cards. */
+.prose-council {
+  @apply text-sm leading-relaxed;
 }
-
-.layout {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 1.25rem 1.5rem 3rem;
+.prose-council h1,
+.prose-council h2,
+.prose-council h3 {
+  @apply font-semibold text-slate-900 dark:text-slate-100 mt-3 mb-1;
 }
-
-h1 {
-  font-size: 1.35rem;
-  font-weight: 600;
-  margin: 0 0 0.5rem;
+.prose-council h1 {
+  @apply text-base;
 }
-
-h2 {
-  font-size: 1.05rem;
-  margin: 1.5rem 0 0.5rem;
-  font-weight: 600;
-  color: #9fb0c3;
+.prose-council h2 {
+  @apply text-sm uppercase tracking-wide text-slate-500 dark:text-slate-400;
 }
-
-.card {
-  background: #19212b;
-  border: 1px solid #2a3542;
-  border-radius: 10px;
-  padding: 1rem 1.1rem;
-  margin-bottom: 1rem;
+.prose-council p {
+  @apply my-1.5;
 }
-
-.row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  align-items: center;
+.prose-council ul,
+.prose-council ol {
+  @apply my-1.5 pl-5 list-disc;
 }
-
-button {
-  background: #2d6cdf;
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  padding: 0.45rem 0.85rem;
-  cursor: pointer;
-  font-size: 0.88rem;
+.prose-council ol {
+  @apply list-decimal;
 }
-
-button.secondary {
-  background: #384555;
+.prose-council li {
+  @apply my-0.5;
 }
-
-button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
+.prose-council code {
+  @apply rounded bg-slate-200 px-1 py-0.5 text-[0.8em] dark:bg-slate-800;
 }
-
-input,
-textarea {
-  width: 100%;
-  background: #0f1419;
-  border: 1px solid #2a3542;
-  color: inherit;
-  border-radius: 6px;
-  padding: 0.45rem 0.6rem;
-  font: inherit;
+.prose-council pre {
+  @apply my-2 overflow-x-auto rounded-lg bg-slate-900 p-3 text-xs text-slate-100;
 }
-
-textarea {
-  min-height: 90px;
-  resize: vertical;
+.prose-council pre code {
+  @apply bg-transparent p-0;
 }
-
-.badge {
-  display: inline-block;
-  font-size: 0.72rem;
-  padding: 0.15rem 0.45rem;
-  border-radius: 999px;
-  background: #2a3542;
-  color: #c0cddc;
+.prose-council a {
+  @apply text-brand-600 underline dark:text-brand-300;
 }
-
-pre.log {
-  white-space: pre-wrap;
-  font-size: 0.8rem;
-  background: #0f1419;
-  padding: 0.75rem;
-  border-radius: 8px;
-  border: 1px solid #2a3542;
-  max-height: 280px;
-  overflow: auto;
-}
-
-.err {
-  color: #ff8a8a;
-  font-size: 0.85rem;
-}
-
-.grid2 {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-}
-
-@media (max-width: 800px) {
-  .grid2 {
-    grid-template-columns: 1fr;
-  }
-}
-
-ul.plain {
-  margin: 0;
-  padding-left: 1.1rem;
-}
-
-code {
-  background: #0f1419;
-  padding: 0.1rem 0.3rem;
-  border-radius: 4px;
-  font-size: 0.85em;
+.prose-council strong {
+  @apply font-semibold;
 }

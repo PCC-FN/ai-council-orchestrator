@@ -22,8 +22,28 @@ async def get_db() -> AsyncIterator[AsyncSession]:
         yield session
 
 
+# Columns added after the initial release. create_all() never ALTERs existing
+# tables, so we add any missing columns by hand to keep old SQLite files working.
+_ADDED_COLUMNS: dict[str, dict[str, str]] = {
+    "projects": {
+        "tech_stack": "TEXT DEFAULT ''",
+        "excluded_paths": "TEXT DEFAULT ''",
+    },
+}
+
+
+async def _ensure_columns(conn) -> None:
+    for table, columns in _ADDED_COLUMNS.items():
+        rows = await conn.exec_driver_sql(f"PRAGMA table_info({table})")
+        existing = {r[1] for r in rows.fetchall()}
+        for name, ddl in columns.items():
+            if name not in existing:
+                await conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
+
+
 async def init_db() -> None:
     from app.models import db_models  # noqa: F401
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await _ensure_columns(conn)

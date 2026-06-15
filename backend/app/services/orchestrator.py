@@ -87,6 +87,25 @@ class CouncilOrchestrator:
         if self.broadcast:
             await self.broadcast(session_id, {"event": event, **payload})
 
+    async def _run_agent(
+        self, session_id: str, agent_name: str, system: str, user: str
+    ) -> ProviderResult:
+        """Run one provider call and broadcast its lifecycle for the live UI."""
+        await self._emit(session_id, "agent_started", {"agent": agent_name})
+        try:
+            res = await self.providers[agent_name].complete(system, user)
+        except Exception as exc:  # surface provider failures to the UI
+            await self._emit(
+                session_id, "agent_failed", {"agent": agent_name, "error": str(exc)}
+            )
+            raise
+        await self._emit(
+            session_id,
+            "agent_finished",
+            {"agent": agent_name, "rating": res.rating},
+        )
+        return res
+
     async def load_session(self, session_id: str) -> CouncilSession | None:
         q = await self.db.execute(
             select(CouncilSession)
@@ -131,15 +150,12 @@ class CouncilOrchestrator:
         ctx = build_context_snippet_sync(proj.repository_path, 4000)
         task = sess.normalized_task or sess.original_user_task
 
-        async def one(name: str, system_fn, user: str) -> ProviderResult:
-            p = self.providers[name]
-            return await p.complete(system_fn(), user)
-
         u = P.user_initial_round(task, ctx)
+        await self._emit(session_id, "round_started", {"round": ROUND_INITIAL})
         results = await asyncio.gather(
-            one(AGENT_CHATGPT, P.system_chatgpt_architect, u),
-            one(AGENT_CLAUDE, P.system_claude_reviewer, u),
-            one(AGENT_COMPOSE2, P.system_compose2_implementation, u),
+            self._run_agent(session_id, AGENT_CHATGPT, P.system_chatgpt_architect(), u),
+            self._run_agent(session_id, AGENT_CLAUDE, P.system_claude_reviewer(), u),
+            self._run_agent(session_id, AGENT_COMPOSE2, P.system_compose2_implementation(), u),
         )
         agents = [AGENT_CHATGPT, AGENT_CLAUDE, AGENT_COMPOSE2]
         for agent, r in zip(agents, results, strict=True):
@@ -173,14 +189,11 @@ class CouncilOrchestrator:
             if ar.round_name == ROUND_INITIAL
         )
         u = P.user_cross_review(task, peers, ctx)
-
-        async def one(name: str, system_fn) -> ProviderResult:
-            return await self.providers[name].complete(system_fn(), u)
-
+        await self._emit(session_id, "round_started", {"round": ROUND_CROSS})
         results = await asyncio.gather(
-            one(AGENT_CHATGPT, P.system_chatgpt_architect),
-            one(AGENT_CLAUDE, P.system_claude_reviewer),
-            one(AGENT_COMPOSE2, P.system_compose2_implementation),
+            self._run_agent(session_id, AGENT_CHATGPT, P.system_chatgpt_architect(), u),
+            self._run_agent(session_id, AGENT_CLAUDE, P.system_claude_reviewer(), u),
+            self._run_agent(session_id, AGENT_COMPOSE2, P.system_compose2_implementation(), u),
         )
         agents = [AGENT_CHATGPT, AGENT_CLAUDE, AGENT_COMPOSE2]
         for agent, r in zip(agents, results, strict=True):
@@ -216,8 +229,10 @@ class CouncilOrchestrator:
             if ar.round_name == ROUND_CROSS
         )
         task = sess.normalized_task or sess.original_user_task
-        moderator = self.providers[AGENT_CHATGPT]
-        res = await moderator.complete(
+        await self._emit(session_id, "round_started", {"round": "consensus_build"})
+        res = await self._run_agent(
+            session_id,
+            AGENT_CHATGPT,
             P.system_moderator_consensus(),
             P.user_moderator_consensus_input(task, r1, r2),
         )
@@ -249,7 +264,7 @@ class CouncilOrchestrator:
         sess.status = "consensus_draft"
         sess.updated_at = datetime.now(UTC)
         await self.db.flush()
-        await self._emit(session_id, "consensus_ready", {})
+        await self._emit(session_id, "consensus_created", {})
 
     async def run_consensus_approval(self, session_id: str) -> None:
         sess = await self.load_session(session_id)
@@ -258,15 +273,12 @@ class CouncilOrchestrator:
         cons = sess.consensus
         body = _consensus_to_markdown(cons)
         u = P.user_consensus_approval(body)
-
-        async def one(name: str, system_fn) -> ProviderResult:
-            return await self.providers[name].complete(system_fn(), u)
-
+        await self._emit(session_id, "round_started", {"round": ROUND_CONSENSUS_APPROVAL})
         # Compose2 reviews feasibility of consensus for implementation
         results = await asyncio.gather(
-            one(AGENT_CHATGPT, P.system_chatgpt_architect),
-            one(AGENT_CLAUDE, P.system_claude_reviewer),
-            one(AGENT_COMPOSE2, P.system_compose2_implementation),
+            self._run_agent(session_id, AGENT_CHATGPT, P.system_chatgpt_architect(), u),
+            self._run_agent(session_id, AGENT_CLAUDE, P.system_claude_reviewer(), u),
+            self._run_agent(session_id, AGENT_COMPOSE2, P.system_compose2_implementation(), u),
         )
         agents = [AGENT_CHATGPT, AGENT_CLAUDE, AGENT_COMPOSE2]
         for agent, r in zip(agents, results, strict=True):
@@ -304,8 +316,11 @@ class CouncilOrchestrator:
         if proj:
             rules = (proj.coding_rules or "") + "\n\n" + (proj.security_rules or "")
         cons_md = _consensus_to_markdown(sess.consensus)
-        optimizer = self.providers[AGENT_CHATGPT]  # Prompt Optimizer role on same provider stack
-        res = await optimizer.complete(
+        await self._emit(session_id, "round_started", {"round": "prompt_engineering"})
+        # Prompt Optimizer role runs on the architect provider stack.
+        res = await self._run_agent(
+            session_id,
+            AGENT_CHATGPT,
             P.system_prompt_optimizer(),
             P.user_prompt_from_consensus(cons_md, rules),
         )
@@ -344,14 +359,11 @@ class CouncilOrchestrator:
         if not fp:
             raise ValueError("No final prompt found for review.")
         u = P.user_prompt_review(fp.prompt_text)
-
-        async def one(name: str, system_fn) -> ProviderResult:
-            return await self.providers[name].complete(system_fn(), u)
-
+        await self._emit(session_id, "round_started", {"round": ROUND_PROMPT_REVIEW})
         results = await asyncio.gather(
-            one(AGENT_CHATGPT, P.system_chatgpt_architect),
-            one(AGENT_CLAUDE, P.system_claude_reviewer),
-            one(AGENT_COMPOSE2, P.system_compose2_implementation),
+            self._run_agent(session_id, AGENT_CHATGPT, P.system_chatgpt_architect(), u),
+            self._run_agent(session_id, AGENT_CLAUDE, P.system_claude_reviewer(), u),
+            self._run_agent(session_id, AGENT_COMPOSE2, P.system_compose2_implementation(), u),
         )
         agents = [AGENT_CHATGPT, AGENT_CLAUDE, AGENT_COMPOSE2]
         for agent, r in zip(agents, results, strict=True):
@@ -402,7 +414,7 @@ class CouncilOrchestrator:
         sess.current_round = "implementation"
         sess.updated_at = datetime.now(UTC)
         await self.db.flush()
-        await self._emit(session_id, "compose2_handoff", {})
+        await self._emit(session_id, "submitted_to_compose2", {})
 
     async def mark_implemented(
         self, session_id: str, changed_files: list[str], summary: str
@@ -435,13 +447,10 @@ class CouncilOrchestrator:
         imp = sess.implementation
         files = imp.changed_files if isinstance(imp.changed_files, list) else str(imp.changed_files)
         u = P.user_code_review(sess.original_user_task, imp.summary or "", str(files))
-
-        async def one(name: str, system_fn) -> ProviderResult:
-            return await self.providers[name].complete(system_fn(), u)
-
+        await self._emit(session_id, "round_started", {"round": ROUND_CODE_REVIEW})
         results = await asyncio.gather(
-            one(AGENT_CHATGPT, P.system_chatgpt_architect),
-            one(AGENT_CLAUDE, P.system_claude_reviewer),
+            self._run_agent(session_id, AGENT_CHATGPT, P.system_chatgpt_architect(), u),
+            self._run_agent(session_id, AGENT_CLAUDE, P.system_claude_reviewer(), u),
         )
         text = "\n\n".join(
             f"### {agent}\n{r.text}" for agent, r in zip([AGENT_CHATGPT, AGENT_CLAUDE], results, strict=True)
@@ -466,7 +475,9 @@ class CouncilOrchestrator:
         sess.current_round = "code_review"
         sess.updated_at = datetime.now(UTC)
         await self.db.flush()
-        await self._emit(session_id, "code_review_done", {"needs_revision": needs_fix})
+        await self._emit(
+            session_id, "implementation_reviewed", {"needs_revision": needs_fix}
+        )
 
     async def run_through_prompt_ready(self, session_id: str) -> None:
         """Convenience: normalize → round1 → round2 → consensus → approvals → prompt → prompt review."""
@@ -485,3 +496,97 @@ class CouncilOrchestrator:
             return
         await self.build_final_prompt(session_id)
         await self.run_prompt_review(session_id)
+
+    # --- High-level controls used by the clean REST API -----------------
+
+    async def start(self, session_id: str) -> str:
+        """Kick off a session: normalize the task and run the first round."""
+        sess = await self.load_session(session_id)
+        if not sess:
+            raise ValueError("session not found")
+        await self._emit(session_id, "session_started", {})
+        await self.normalize_task(session_id)
+        await self.run_initial_assessment(session_id)
+        return "initial_assessment"
+
+    async def run_next_round(self, session_id: str) -> str:
+        """Advance the session by exactly one orchestration step.
+
+        Returns the name of the step that was executed, or a sentinel like
+        ``waiting`` (manual action required) / ``done`` (nothing left to do).
+        """
+        sess = await self.load_session(session_id)
+        if not sess:
+            raise ValueError("session not found")
+        status = sess.status
+
+        if status in {"created", "", "normalized"} and not sess.normalized_task:
+            await self.normalize_task(session_id)
+            return "normalize"
+        if status in {"created", "", "normalized"}:
+            await self.run_initial_assessment(session_id)
+            return "initial_assessment"
+        if status == "round_1_done":
+            await self.run_cross_review(session_id)
+            return "cross_review"
+        if status == "round_2_done":
+            await self.build_consensus(session_id)
+            return "build_consensus"
+        if status in {"consensus_draft", "consensus_blocked"}:
+            await self.run_consensus_approval(session_id)
+            return "consensus_approval"
+        if status == "consensus_approved":
+            await self.build_final_prompt(session_id)
+            return "build_final_prompt"
+        if status in {"prompt_draft", "prompt_revisions"}:
+            await self.run_prompt_review(session_id)
+            return "prompt_review"
+        if status == "implemented":
+            await self.run_code_review(session_id)
+            return "code_review"
+        if status in {"prompt_ready", "ready_for_implementation", "needs_revision"}:
+            return "waiting"  # manual action required
+        return "done"
+
+    async def approve_consensus(self, session_id: str) -> None:
+        """Manually approve the consensus (skip / override agent voting)."""
+        sess = await self.load_session(session_id)
+        if not sess or not sess.consensus:
+            raise ValueError("no consensus to approve")
+        sess.consensus.approval_status = "approved"
+        sess.status = "consensus_approved"
+        sess.current_round = "prompt_engineering"
+        sess.updated_at = datetime.now(UTC)
+        await self.db.flush()
+        await self._emit(session_id, "consensus_approved", {})
+
+    async def regenerate_final_prompt(self, session_id: str) -> None:
+        """Generate a fresh final-prompt version (e.g. after revisions)."""
+        sess = await self.load_session(session_id)
+        if not sess or not sess.consensus:
+            raise ValueError("no consensus available")
+        if sess.consensus.approval_status != "approved":
+            sess.consensus.approval_status = "approved"
+        await self.build_final_prompt(session_id)
+
+    async def approve_final_prompt(self, session_id: str) -> None:
+        """Manual human approval of the latest final prompt."""
+        sess = await self.load_session(session_id)
+        if not sess:
+            raise ValueError("session not found")
+        fp_row = await self.db.execute(
+            select(FinalPrompt)
+            .where(FinalPrompt.session_id == sess.id)
+            .order_by(FinalPrompt.version.desc())
+            .limit(1)
+        )
+        fp = fp_row.scalar_one_or_none()
+        if not fp:
+            raise ValueError("no final prompt to approve")
+        fp.approved_by_chatgpt = True
+        fp.approved_by_claude = True
+        fp.approved_by_compose2 = True
+        sess.status = "prompt_ready"
+        sess.updated_at = datetime.now(UTC)
+        await self.db.flush()
+        await self._emit(session_id, "prompt_approved", {"version": fp.version})

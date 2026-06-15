@@ -83,27 +83,76 @@ class MockProvider(BaseProvider):
                 approval_status="approved",
             )
 
-        payload = {
-            "agent": agent_hint,
-            "goal": "Deliver a minimal, test-backed change aligned with the task.",
-            "completeness": "Mostly complete; clarify deployment target if any.",
-            "risks": "Scope creep; missing non-functional constraints.",
-            "recommendation": "Implement behind a small internal API with unit tests.",
-            "files": ["src/module.py", "tests/test_module.py"],
-            "tests": ["Unit: core logic", "Integration: API happy path"],
-        }
-
         if agent_hint == "claude_reviewer":
-            payload["edge_cases"] = ["null inputs", "timeouts"]
-            payload["maintainability"] = "Prefer pure functions and explicit types."
-        if agent_hint == "compose2":
-            payload["feasible"] = True
-            payload["steps"] = [
-                "Locate entry points",
-                "Add implementation",
-                "Add/update tests",
-                "Run linters/tests",
-            ]
+            text = (
+                "## Zustimmungspunkte\n"
+                "- Der Ansatz ist grundsätzlich tragfähig und klein gehalten.\n"
+                "- Eine klare Trennung von UI und Validierungslogik ist sinnvoll.\n\n"
+                "## Bedenken\n"
+                "- Fehlerzustände (leere Felder, ungültige E-Mail) müssen explizit behandelt werden.\n"
+                "- Eingaben sollten clientseitig **und** serverseitig validiert werden.\n\n"
+                "## Edge Cases\n"
+                "- Leere Eingaben und reine Leerzeichen\n"
+                "- Sehr lange Eingaben / fehlerhaftes E-Mail-Format\n"
+                "- Mehrfaches schnelles Absenden (Double-Submit)\n\n"
+                "## Wartbarkeit\n"
+                "Reine, testbare Funktionen für die Validierung bevorzugen; "
+                "Komponenten klein und wiederverwendbar halten.\n\n"
+                "## Vorgeschlagene Struktur\n"
+                "- `LoginForm`-Komponente\n"
+                "- `useLoginValidation`-Hook\n"
+                "- `validators.ts` für reine Prüflogik"
+            )
+            return ProviderResult(
+                text=text,
+                rating=4,
+                concerns="Validierung muss auch serverseitig erfolgen.",
+            )
 
-        text = json.dumps(payload, indent=2)
-        return ProviderResult(text=text, rating=4, concerns="Mock provider — replace with real model.")
+        if agent_hint == "compose2":
+            text = (
+                "## Umsetzbar\n"
+                "Ja — der Umfang ist klar und in wenigen Schritten implementierbar.\n\n"
+                "## Voraussetzungen\n"
+                "- Vorhandenes Formular-/Routing-Setup\n"
+                "- Test-Runner konfiguriert\n\n"
+                "## Schrittreihenfolge\n"
+                "1. Formularfelder und State anlegen\n"
+                "2. Validierungslogik als reine Funktionen ergänzen\n"
+                "3. Fehleranzeige und Loading-State einbauen\n"
+                "4. Tests für gültige/ungültige Eingaben schreiben\n"
+                "5. Linter/Formatter ausführen\n\n"
+                "## Betroffene Dateien\n"
+                "- `src/components/LoginForm.tsx`\n"
+                "- `src/utils/validators.ts`\n"
+                "- `tests/login_form.test.tsx`\n\n"
+                "## Teststrategie\n"
+                "Unit-Tests für Validatoren + ein Happy-Path-Integrationstest.\n\n"
+                "## Rollout\n"
+                "Keine Migrationen nötig; rein additive Änderung."
+            )
+            return ProviderResult(
+                text=text, rating=5, concerns="Mock-Antwort — echtes Modell ersetzt dies."
+            )
+
+        text = (
+            "## Ziel\n"
+            "Eine minimale, getestete Änderung passend zur Aufgabe liefern.\n\n"
+            "## Vollständigkeit\n"
+            "Weitgehend klar; Zielumgebung/Deployment ggf. noch bestätigen.\n\n"
+            "## Risiken\n"
+            "- Scope Creep\n"
+            "- Fehlende nicht-funktionale Anforderungen (z. B. A11y, i18n)\n\n"
+            "## Empfehlung\n"
+            "Hinter einer kleinen, klar abgegrenzten Schnittstelle implementieren "
+            "und mit Unit-Tests absichern.\n\n"
+            "## Betroffene Dateien / Module\n"
+            "- `src/components/LoginForm.tsx`\n"
+            "- `tests/login_form.test.tsx`\n\n"
+            "## Benötigte Tests\n"
+            "- Unit: Kern-Validierung\n"
+            "- Integration: erfolgreicher Login-Flow"
+        )
+        return ProviderResult(
+            text=text, rating=4, concerns="Mock-Antwort — echtes Modell ersetzt dies."
+        )

@@ -12,6 +12,18 @@ class ProjectCreate(BaseModel):
     repository_path: str = ""
     coding_rules: str = ""
     security_rules: str = ""
+    tech_stack: str = ""
+    excluded_paths: str = ""
+
+
+class ProjectUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    repository_path: str | None = None
+    coding_rules: str | None = None
+    security_rules: str | None = None
+    tech_stack: str | None = None
+    excluded_paths: str | None = None
 
 
 class ProjectOut(BaseModel):
@@ -21,6 +33,8 @@ class ProjectOut(BaseModel):
     repository_path: str
     coding_rules: str
     security_rules: str
+    tech_stack: str = ""
+    excluded_paths: str = ""
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -28,7 +42,24 @@ class ProjectOut(BaseModel):
 
 class SessionCreate(BaseModel):
     title: str
-    original_user_task: str
+    original_user_task: str = ""
+    project_id: str | None = None
+    affected_files: str = ""
+    desired_outcome: str = ""
+    constraints: str = ""
+
+    def build_task(self) -> str:
+        """Compose the structured task text from optional fields."""
+        parts: list[str] = []
+        if self.original_user_task.strip():
+            parts.append(self.original_user_task.strip())
+        if self.affected_files.strip():
+            parts.append(f"## Betroffene Dateien / Module\n{self.affected_files.strip()}")
+        if self.desired_outcome.strip():
+            parts.append(f"## Gewünschtes Ergebnis\n{self.desired_outcome.strip()}")
+        if self.constraints.strip():
+            parts.append(f"## Einschränkungen\n{self.constraints.strip()}")
+        return "\n\n".join(parts).strip()
 
 
 class FinalPromptOut(BaseModel):
@@ -114,3 +145,16 @@ class ImplementationManualUpdate(BaseModel):
     status: str = "implemented"
     changed_files: list[str] = []
     summary: str = ""
+
+
+class CouncilSessionSummary(BaseModel):
+    id: str
+    project_id: str
+    project_name: str = ""
+    title: str
+    status: str
+    current_round: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}

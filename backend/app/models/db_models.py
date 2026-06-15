@@ -23,6 +23,8 @@ class Project(Base):
     repository_path: Mapped[str] = mapped_column(String(1024), default="")
     coding_rules: Mapped[str] = mapped_column(Text, default="")
     security_rules: Mapped[str] = mapped_column(Text, default="")
+    tech_stack: Mapped[str] = mapped_column(Text, default="")
+    excluded_paths: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: dt.datetime.now(dt.UTC)
     )

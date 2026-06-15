@@ -1,10 +1,14 @@
 name: ai-council-orchestrator
+
 services:
   api:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    expose:
+      - "8000"
     ports:
+      # Optional direct access to the API / docs at http://localhost:8000/docs
       - "8000:8000"
     volumes:
       - council_data:/data
@@ -12,6 +16,25 @@ services:
       DATABASE_URL: sqlite+aiosqlite:////data/council.db
     env_file:
       - .env
+    networks:
+      - council
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+    networks:
+      - council
+    restart: unless-stopped
 
 volumes:
   council_data: {}
+
+networks:
+  council:
+    driver: bridge

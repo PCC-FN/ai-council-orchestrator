@@ -8,12 +8,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models.db_models import CouncilSession, Project
+from app.models.db_models import (
+    AgentResponse,
+    Consensus,
+    CouncilSession,
+    FinalPrompt,
+    Project,
+)
 from app.schemas.schemas import (
+    AgentResponseOut,
+    ConsensusOut,
     CouncilSessionOut,
+    CouncilSessionSummary,
+    FinalPromptOut,
     ImplementationManualUpdate,
     ProjectCreate,
     ProjectOut,
+    ProjectUpdate,
     SessionCreate,
 )
 from app.services.export_markdown import session_to_markdown
@@ -67,6 +78,8 @@ async def create_project(body: ProjectCreate, db: AsyncSession = Depends(get_db)
         repository_path=body.repository_path,
         coding_rules=body.coding_rules,
         security_rules=body.security_rules,
+        tech_stack=body.tech_stack,
+        excluded_paths=body.excluded_paths,
     )
     db.add(p)
     await db.commit()
@@ -78,6 +91,38 @@ async def create_project(body: ProjectCreate, db: AsyncSession = Depends(get_db)
 async def list_projects(db: AsyncSession = Depends(get_db)):
     r = await db.execute(select(Project).order_by(Project.created_at.desc()))
     return list(r.scalars().all())
+
+
+async def _get_project(project_id: str, db: AsyncSession) -> Project:
+    q = await db.execute(select(Project).where(Project.id == project_id))
+    p = q.scalar_one_or_none()
+    if not p:
+        raise HTTPException(404, "project not found")
+    return p
+
+
+@router.get("/{project_id}", response_model=ProjectOut)
+async def read_project(project_id: str, db: AsyncSession = Depends(get_db)):
+    return await _get_project(project_id, db)
+
+
+@router.put("/{project_id}", response_model=ProjectOut)
+async def update_project(
+    project_id: str, body: ProjectUpdate, db: AsyncSession = Depends(get_db)
+):
+    p = await _get_project(project_id, db)
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(p, field, value)
+    await db.commit()
+    await db.refresh(p)
+    return p
+
+
+@router.delete("/{project_id}", status_code=204)
+async def delete_project(project_id: str, db: AsyncSession = Depends(get_db)):
+    p = await _get_project(project_id, db)
+    await db.delete(p)
+    await db.commit()
 
 
 @router.get("/{project_id}/sessions", response_model=list[CouncilSessionOut])
@@ -106,7 +151,7 @@ async def create_session(
     s = CouncilSession(
         project_id=project_id,
         title=body.title,
-        original_user_task=body.original_user_task,
+        original_user_task=body.build_task() or body.original_user_task,
     )
     db.add(s)
     await db.commit()
@@ -115,6 +160,48 @@ async def create_session(
 
 
 session_router = APIRouter(prefix="/sessions", tags=["sessions"])
+
+
+@session_router.get("", response_model=list[CouncilSessionSummary])
+async def list_all_sessions(db: AsyncSession = Depends(get_db)):
+    r = await db.execute(
+        select(CouncilSession)
+        .options(selectinload(CouncilSession.project))
+        .order_by(CouncilSession.updated_at.desc())
+    )
+    out: list[CouncilSessionSummary] = []
+    for s in r.scalars().unique().all():
+        out.append(
+            CouncilSessionSummary(
+                id=s.id,
+                project_id=s.project_id,
+                project_name=s.project.name if s.project else "",
+                title=s.title,
+                status=s.status,
+                current_round=s.current_round,
+                created_at=s.created_at,
+                updated_at=s.updated_at,
+            )
+        )
+    return out
+
+
+@session_router.post("", response_model=CouncilSessionOut)
+async def create_session_global(body: SessionCreate, db: AsyncSession = Depends(get_db)):
+    if not body.project_id:
+        raise HTTPException(400, "project_id is required")
+    q = await db.execute(select(Project).where(Project.id == body.project_id))
+    if not q.scalar_one_or_none():
+        raise HTTPException(404, "project not found")
+    s = CouncilSession(
+        project_id=body.project_id,
+        title=body.title,
+        original_user_task=body.build_task() or body.original_user_task,
+    )
+    db.add(s)
+    await db.commit()
+    await db.refresh(s)
+    return await get_session(s.id, db)
 
 
 async def get_session(session_id: str, db: AsyncSession) -> CouncilSessionOut:
@@ -146,6 +233,159 @@ async def export_md(session_id: str, db: AsyncSession = Depends(get_db)):
     if not md:
         raise HTTPException(404)
     return {"markdown": md}
+
+
+@session_router.post("/{session_id}/export-markdown")
+async def export_markdown_post(session_id: str, db: AsyncSession = Depends(get_db)):
+    md = await session_to_markdown(db, session_id)
+    if not md:
+        raise HTTPException(404)
+    return {"markdown": md}
+
+
+# --- Clean REST surface expected by the frontend --------------------------
+
+
+@session_router.post("/{session_id}/start", response_model=CouncilSessionOut)
+async def session_start(session_id: str, db: AsyncSession = Depends(get_db)):
+    orch = CouncilOrchestrator(db, _broadcast)
+    try:
+        await orch.start(session_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    await db.commit()
+    return await get_session(session_id, db)
+
+
+@session_router.post("/{session_id}/run-next-round", response_model=CouncilSessionOut)
+async def session_run_next(session_id: str, db: AsyncSession = Depends(get_db)):
+    orch = CouncilOrchestrator(db, _broadcast)
+    try:
+        await orch.run_next_round(session_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    await db.commit()
+    return await get_session(session_id, db)
+
+
+@session_router.post("/{session_id}/approve", response_model=CouncilSessionOut)
+async def session_approve_consensus(session_id: str, db: AsyncSession = Depends(get_db)):
+    orch = CouncilOrchestrator(db, _broadcast)
+    try:
+        await orch.approve_consensus(session_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    await db.commit()
+    return await get_session(session_id, db)
+
+
+@session_router.get("/{session_id}/responses", response_model=list[AgentResponseOut])
+async def session_responses(session_id: str, db: AsyncSession = Depends(get_db)):
+    r = await db.execute(
+        select(AgentResponse)
+        .where(AgentResponse.session_id == session_id)
+        .order_by(AgentResponse.created_at)
+    )
+    return list(r.scalars().all())
+
+
+@session_router.get("/{session_id}/consensus", response_model=ConsensusOut)
+async def session_consensus(session_id: str, db: AsyncSession = Depends(get_db)):
+    r = await db.execute(
+        select(Consensus).where(Consensus.session_id == session_id)
+    )
+    c = r.scalar_one_or_none()
+    if not c:
+        raise HTTPException(404, "no consensus yet")
+    return c
+
+
+@session_router.post("/{session_id}/generate-consensus", response_model=CouncilSessionOut)
+async def session_generate_consensus(session_id: str, db: AsyncSession = Depends(get_db)):
+    orch = CouncilOrchestrator(db, _broadcast)
+    await orch.build_consensus(session_id)
+    await db.commit()
+    return await get_session(session_id, db)
+
+
+@session_router.get("/{session_id}/final-prompt", response_model=FinalPromptOut)
+async def session_final_prompt(session_id: str, db: AsyncSession = Depends(get_db)):
+    r = await db.execute(
+        select(FinalPrompt)
+        .where(FinalPrompt.session_id == session_id)
+        .order_by(FinalPrompt.version.desc())
+        .limit(1)
+    )
+    fp = r.scalar_one_or_none()
+    if not fp:
+        raise HTTPException(404, "no final prompt yet")
+    return fp
+
+
+@session_router.post("/{session_id}/generate-final-prompt", response_model=CouncilSessionOut)
+async def session_generate_final_prompt(
+    session_id: str, db: AsyncSession = Depends(get_db)
+):
+    orch = CouncilOrchestrator(db, _broadcast)
+    try:
+        await orch.regenerate_final_prompt(session_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    await db.commit()
+    return await get_session(session_id, db)
+
+
+@session_router.post("/{session_id}/review-final-prompt", response_model=CouncilSessionOut)
+async def session_review_final_prompt(session_id: str, db: AsyncSession = Depends(get_db)):
+    orch = CouncilOrchestrator(db, _broadcast)
+    try:
+        await orch.run_prompt_review(session_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    await db.commit()
+    return await get_session(session_id, db)
+
+
+@session_router.post("/{session_id}/approve-final-prompt", response_model=CouncilSessionOut)
+async def session_approve_final_prompt(session_id: str, db: AsyncSession = Depends(get_db)):
+    orch = CouncilOrchestrator(db, _broadcast)
+    try:
+        await orch.approve_final_prompt(session_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    await db.commit()
+    return await get_session(session_id, db)
+
+
+@session_router.post("/{session_id}/submit-to-compose2", response_model=CouncilSessionOut)
+async def session_submit_compose2(session_id: str, db: AsyncSession = Depends(get_db)):
+    orch = CouncilOrchestrator(db, _broadcast)
+    try:
+        await orch.submit_to_compose2(session_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    await db.commit()
+    return await get_session(session_id, db)
+
+
+@session_router.post("/{session_id}/mark-implemented", response_model=CouncilSessionOut)
+async def session_mark_implemented(
+    session_id: str,
+    body: ImplementationManualUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    orch = CouncilOrchestrator(db, _broadcast)
+    await orch.mark_implemented(session_id, body.changed_files, body.summary)
+    await db.commit()
+    return await get_session(session_id, db)
+
+
+@session_router.post("/{session_id}/review-implementation", response_model=CouncilSessionOut)
+async def session_review_implementation(session_id: str, db: AsyncSession = Depends(get_db)):
+    orch = CouncilOrchestrator(db, _broadcast)
+    await orch.run_code_review(session_id)
+    await db.commit()
+    return await get_session(session_id, db)
 
 
 @session_router.post("/{session_id}/actions/normalize")
