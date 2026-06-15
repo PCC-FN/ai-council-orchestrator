@@ -19,7 +19,9 @@ import { MarkdownExportButton } from "../components/session/MarkdownExportButton
 import { Api } from "../api/endpoints";
 import { useSessionSocket } from "../hooks/useSessionSocket";
 import { useSettings } from "../hooks/useSettings";
-import { STAGES, nextStepHint, statusLabel } from "../utils/rounds";
+import { fetchTaskPhases } from "../api/orchestra";
+import { STAGES, nextStepHint, phaseLabel } from "../utils/rounds";
+import type { PhaseExecution } from "../api/orchestra";
 import { agentMeta } from "../utils/agents";
 import type { AgentResponse, AgentStatus, CouncilSession } from "../types";
 
@@ -120,7 +122,17 @@ export default function SessionDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState("");
+  const [phaseExecutions, setPhaseExecutions] = useState<PhaseExecution[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
+
+  const loadPhases = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      setPhaseExecutions(await fetchTaskPhases(sessionId));
+    } catch {
+      /* optional */
+    }
+  }, [sessionId]);
 
   const load = useCallback(async () => {
     if (!sessionId) return;
@@ -136,11 +148,13 @@ export default function SessionDetail() {
 
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadPhases();
+  }, [load, loadPhases]);
 
   // Any live event triggers a refetch so the UI always reflects backend state.
   const { connected, log, activeRound, activeAgent } = useSessionSocket(sessionId, () => {
     void load();
+    void loadPhases();
   });
 
   const latestPrompt = useMemo(() => {
@@ -165,21 +179,8 @@ export default function SessionDetail() {
     setBusy("all");
     setActionError("");
     try {
-      let current = session;
-      for (let i = 0; i < 10; i++) {
-        const before = current?.status;
-        current = await Api.runNextRound(sessionId);
-        setSession(current);
-        if (
-          current.status === before ||
-          ["prompt_ready", "consensus_blocked", "prompt_revisions", "completed"].includes(
-            current.status,
-          ) ||
-          WAITING.includes(current.status)
-        ) {
-          break;
-        }
-      }
+      setSession(await Api.orchestrateTask(sessionId));
+      await loadPhases();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -232,7 +233,10 @@ export default function SessionDetail() {
           <CardBody className="space-y-4">
             <div className="flex flex-wrap items-center gap-2">
               <StatusBadge status={session.status} />
-              <Badge tone="neutral">Runde: {statusLabel(session.current_round) || session.current_round}</Badge>
+              <Badge tone="info">
+                Phase {STAGES.findIndex((s) => s.key === session.current_phase) + 1 || "?"}:{" "}
+                {phaseLabel(session.current_phase)}
+              </Badge>
               <Badge tone={connected ? "success" : "neutral"}>
                 <span
                   className={
@@ -254,19 +258,19 @@ export default function SessionDetail() {
             <div className="flex flex-wrap gap-2">
               {canStart && (
                 <Button loading={busy === "start"} onClick={runAction("start", () => Api.startSession(session.id))}>
-                  Council starten
+                  Orchestrierung starten
                 </Button>
               )}
               {advanceable && (
                 <>
                   <Button
                     loading={busy === "next"}
-                    onClick={runAction("next", () => Api.runNextRound(session.id))}
+                    onClick={runAction("next", () => Api.advancePhase(session.id))}
                   >
-                    Nächste Runde
+                    Nächste Phase
                   </Button>
                   <Button variant="secondary" loading={busy === "all"} onClick={runAll}>
-                    Automatisch bis Prompt
+                    Auto-Orchestrierung
                   </Button>
                 </>
               )}
@@ -286,7 +290,7 @@ export default function SessionDetail() {
         {/* Round progress */}
         <Card>
           <CardBody>
-            <RoundProgress session={session} activeRound={activeRound} />
+            <RoundProgress session={session} activeRound={activeRound} phaseExecutions={phaseExecutions} />
             {activeAgent && (
               <p className="mt-3 text-xs text-brand-600 dark:text-brand-300">
                 <span className="animate-pulse-fast">●</span> {agentMeta(activeAgent).label} arbeitet…

@@ -1,5 +1,6 @@
 import { STAGES, deriveRoundStatuses } from "../../utils/rounds";
 import type { CouncilSession, RoundStatus } from "../../types";
+import type { PhaseExecution } from "../../api/orchestra";
 import { cn } from "../../utils/cn";
 
 const DOT: Record<RoundStatus, string> = {
@@ -19,11 +20,13 @@ const LABEL: Record<RoundStatus, string> = {
 export function RoundProgress({
   session,
   activeRound,
+  phaseExecutions = [],
 }: {
   session: CouncilSession;
   activeRound?: string | null;
+  phaseExecutions?: PhaseExecution[];
 }) {
-  const statuses = deriveRoundStatuses(session, activeRound);
+  const statuses = deriveRoundStatuses(session, activeRound, phaseExecutions);
   const completed = STAGES.filter((s) => statuses[s.key] === "completed").length;
   const pct = Math.round((completed / STAGES.length) * 100);
 
@@ -42,7 +45,7 @@ export function RoundProgress({
         />
       </div>
 
-      <ol className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
+      <ol className="grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-3 lg:grid-cols-4">
         {STAGES.map((stage, i) => {
           const st = statuses[stage.key];
           return (

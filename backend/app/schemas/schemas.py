@@ -125,6 +125,9 @@ class CouncilSessionOut(BaseModel):
     normalized_task: str
     status: str
     current_round: str
+    current_phase: str = "understand_problem"
+    iteration_count: int = 0
+    max_iterations: int = 3
     created_at: datetime
     updated_at: datetime
     agent_responses: list[AgentResponseOut] = Field(default_factory=list)

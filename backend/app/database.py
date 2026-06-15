@@ -29,6 +29,11 @@ _ADDED_COLUMNS: dict[str, dict[str, str]] = {
         "tech_stack": "TEXT DEFAULT ''",
         "excluded_paths": "TEXT DEFAULT ''",
     },
+    "council_sessions": {
+        "current_phase": "TEXT DEFAULT 'understand_problem'",
+        "iteration_count": "INTEGER DEFAULT 0",
+        "max_iterations": "INTEGER DEFAULT 3",
+    },
 }
 
 

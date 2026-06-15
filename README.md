@@ -1,8 +1,22 @@
-# AI Council Coding Orchestrator
+# AI Orchestra
 
-Zentraler Orchestrator für mehrstufige Coding-Aufgaben: **ChatGPT (Architektur)**, **Claude (Review)** und **Compose2 (Umsetzbarkeit / Implementierung)** bewerten, diskutieren und konsolidieren eine Aufgabe zu einem **finalen, freigegebenen Coding-Prompt** — mit Begründungen, Konsens, Freigaben und Markdown-Export.
+**AI Orchestra ist kein Chatbot** — es ist ein Betriebssystem für KI-Agenten und Coding-Worker.
 
-Die Weboberfläche führt den Benutzer durch den kompletten Ablauf: Aufgabe eingeben → Agenten bewerten lassen → Konsens → finaler Prompt → an Compose2 übergeben → Umsetzung reviewen.
+Der Benutzer beschreibt ein gewünschtes Feature. AI Orchestra übernimmt vollständig die Orchestrierung: Agenten diskutieren im Hintergrund, der Coordinator steuert 12 Phasen, Worker setzen um.
+
+> Ausführliche Architektur: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+
+## Plattform-Erweiterung
+
+- **Coordinator** — Workflow-Manager ohne eigene KI (`app/coordinator/`)
+- **Knowledge Layer** — dauerhaftes Projektwissen (`app/knowledge/`)
+- **Konfigurierbare Agenten** — `GET/POST /agents`
+- **Worker-System** — Registrierung, Heartbeat, Job-Polling (`/workers/*`)
+- **Job-System** — Implementierungs-Jobs mit Projektwissen
+- **Event-System** — persistenter Audit-Log (`GET /orchestra/events`)
+- **12-Phasen-Workflow** — jede Phase einzeln gespeichert
+- **Plugin-Registry** — erweiterbar ohne Kern-Änderungen
+- **Windows Worker** — `workers/ai-orchestra-worker/` (keine Cursor-Automatisierung)
 
 ## Features
 

@@ -248,9 +248,11 @@ async def export_markdown_post(session_id: str, db: AsyncSession = Depends(get_d
 
 @session_router.post("/{session_id}/start", response_model=CouncilSessionOut)
 async def session_start(session_id: str, db: AsyncSession = Depends(get_db)):
-    orch = CouncilOrchestrator(db, _broadcast)
+    from app.coordinator.coordinator import Coordinator
+
+    coord = Coordinator(db, _broadcast)
     try:
-        await orch.start(session_id)
+        await coord.start_task(session_id)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     await db.commit()
@@ -259,9 +261,11 @@ async def session_start(session_id: str, db: AsyncSession = Depends(get_db)):
 
 @session_router.post("/{session_id}/run-next-round", response_model=CouncilSessionOut)
 async def session_run_next(session_id: str, db: AsyncSession = Depends(get_db)):
-    orch = CouncilOrchestrator(db, _broadcast)
+    from app.coordinator.coordinator import Coordinator
+
+    coord = Coordinator(db, _broadcast)
     try:
-        await orch.run_next_round(session_id)
+        await coord.advance_phase(session_id)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     await db.commit()

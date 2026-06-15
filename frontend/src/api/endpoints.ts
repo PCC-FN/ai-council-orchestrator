@@ -34,8 +34,10 @@ export const Api = {
   createSession: (body: SessionInput) => api<CouncilSession>("/sessions", json(body)),
 
   startSession: (id: string) => api<CouncilSession>(`/sessions/${id}/start`, json({})),
+  advancePhase: (id: string) =>
+    api<CouncilSession>(`/tasks/${id}/advance-phase`, json({})),
   runNextRound: (id: string) =>
-    api<CouncilSession>(`/sessions/${id}/run-next-round`, json({})),
+    api<CouncilSession>(`/tasks/${id}/advance-phase`, json({})),
   approveConsensus: (id: string) =>
     api<CouncilSession>(`/sessions/${id}/approve`, json({})),
   generateConsensus: (id: string) =>
@@ -70,6 +72,10 @@ export const Api = {
   // Export
   exportMarkdown: (id: string) =>
     api<{ markdown: string }>(`/sessions/${id}/export-markdown`, json({})),
+  orchestrateTask: (id: string) =>
+    api<CouncilSession>(`/tasks/${id}/orchestrate`, json({})),
+  getOrchestraDashboard: () =>
+    import("./orchestra").then((m) => m.fetchOrchestraDashboard()),
   improvementPrompt: (id: string) =>
     api<{ markdown: string }>(`/sessions/${id}/improvement-prompt`),
 };

@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import uuid
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -32,6 +32,12 @@ class Project(Base):
     sessions: Mapped[list[CouncilSession]] = relationship(
         "CouncilSession", back_populates="project", cascade="all, delete-orphan"
     )
+    knowledge: Mapped[ProjectKnowledge | None] = relationship(
+        "ProjectKnowledge",
+        back_populates="project",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
 
 
 class CouncilSession(Base):
@@ -44,8 +50,12 @@ class CouncilSession(Base):
     normalized_task: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(
         String(64), default="created"
-    )  # created, running, paused, consensus, prompt_ready, implementing, reviewing, completed, needs_revision
+    )
     current_round: Mapped[str] = mapped_column(String(64), default="pending")
+    # AI Orchestra 12-phase workflow (Coordinator tracks this separately too).
+    current_phase: Mapped[str] = mapped_column(String(64), default="understand_problem")
+    iteration_count: Mapped[int] = mapped_column(Integer, default=0)
+    max_iterations: Mapped[int] = mapped_column(Integer, default=3)
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: dt.datetime.now(dt.UTC)
     )
@@ -74,6 +84,16 @@ class CouncilSession(Base):
         uselist=False,
         cascade="all, delete-orphan",
     )
+    phase_executions: Mapped[list[PhaseExecution]] = relationship(
+        "PhaseExecution", back_populates="task", cascade="all, delete-orphan"
+    )
+    jobs: Mapped[list[OrchestraJob]] = relationship(
+        "OrchestraJob", back_populates="task", cascade="all, delete-orphan"
+    )
+
+
+# Alias for the new product name (table name stays for migration compatibility).
+OrchestraTask = CouncilSession
 
 
 class AgentResponse(Base):
@@ -139,6 +159,10 @@ class FinalPrompt(Base):
     session: Mapped[CouncilSession] = relationship("CouncilSession", back_populates="final_prompts")
 
 
+def _empty_json_dict() -> dict:
+    return {}
+
+
 def _empty_json_list() -> list:
     return []
 
@@ -160,4 +184,160 @@ class ImplementationResult(Base):
 
     session: Mapped[CouncilSession] = relationship(
         "CouncilSession", back_populates="implementation"
+    )
+
+
+class ProjectKnowledge(Base):
+    """Persistent project knowledge injected into every agent/worker context."""
+
+    __tablename__ = "project_knowledge"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("projects.id"), unique=True, nullable=False
+    )
+    architecture: Mapped[str] = mapped_column(Text, default="")
+    design_patterns: Mapped[str] = mapped_column(Text, default="")
+    frameworks: Mapped[str] = mapped_column(Text, default="")
+    naming_conventions: Mapped[str] = mapped_column(Text, default="")
+    code_style: Mapped[str] = mapped_column(Text, default="")
+    adrs: Mapped[list | dict] = mapped_column(JSON, default=_empty_json_list)
+    lessons_learned: Mapped[str] = mapped_column(Text, default="")
+    key_decisions: Mapped[str] = mapped_column(Text, default="")
+    known_issues: Mapped[str] = mapped_column(Text, default="")
+    best_practices: Mapped[str] = mapped_column(Text, default="")
+    prompt_history: Mapped[list | dict] = mapped_column(JSON, default=_empty_json_list)
+    review_history: Mapped[list | dict] = mapped_column(JSON, default=_empty_json_list)
+    file_overview: Mapped[str] = mapped_column(Text, default="")
+    repo_structure: Mapped[str] = mapped_column(Text, default="")
+    documentation: Mapped[str] = mapped_column(Text, default="")
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: dt.datetime.now(dt.UTC),
+        onupdate=lambda: dt.datetime.now(dt.UTC),
+    )
+
+    project: Mapped[Project] = relationship("Project", back_populates="knowledge")
+
+
+class AgentDefinition(Base):
+    """Configurable AI agent — provider, model, role, system prompt."""
+
+    __tablename__ = "agent_definitions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    display_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    provider: Mapped[str] = mapped_column(String(64), default="mock")
+    model: Mapped[str] = mapped_column(String(128), default="")
+    system_prompt: Mapped[str] = mapped_column(Text, default="")
+    role: Mapped[str] = mapped_column(String(128), default="")
+    temperature: Mapped[float] = mapped_column(Float, default=0.7)
+    priority: Mapped[int] = mapped_column(Integer, default=50)
+    active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: dt.datetime.now(dt.UTC)
+    )
+
+
+class WorkerRegistration(Base):
+    """Remote coding worker registered with AI Orchestra."""
+
+    __tablename__ = "worker_registrations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    worker_type: Mapped[str] = mapped_column(String(64), default="generic")
+    hostname: Mapped[str] = mapped_column(String(256), default="")
+    status: Mapped[str] = mapped_column(String(32), default="idle")  # idle|busy|offline|error
+    capabilities: Mapped[dict | list] = mapped_column(JSON, default=_empty_json_dict)
+    current_job_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    last_heartbeat_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    registered_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: dt.datetime.now(dt.UTC)
+    )
+
+
+class OrchestraJob(Base):
+    """Implementation job dispatched to a worker."""
+
+    __tablename__ = "orchestra_jobs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    task_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("council_sessions.id"), nullable=False
+    )
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), nullable=False)
+    worker_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("worker_registrations.id"), nullable=True
+    )
+    job_type: Mapped[str] = mapped_column(String(64), default="implementation")
+    branch: Mapped[str] = mapped_column(String(256), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    final_prompt: Mapped[str] = mapped_column(Text, default="")
+    affected_files: Mapped[list | dict] = mapped_column(JSON, default=_empty_json_list)
+    priority: Mapped[int] = mapped_column(Integer, default=50)
+    required_capabilities: Mapped[list | dict] = mapped_column(JSON, default=_empty_json_list)
+    timeout_seconds: Mapped[int] = mapped_column(Integer, default=3600)
+    status: Mapped[str] = mapped_column(
+        String(32), default="pending"
+    )  # pending|assigned|running|completed|failed|cancelled
+    progress_message: Mapped[str] = mapped_column(Text, default="")
+    result: Mapped[dict | list] = mapped_column(JSON, default=_empty_json_dict)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: dt.datetime.now(dt.UTC)
+    )
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: dt.datetime.now(dt.UTC),
+        onupdate=lambda: dt.datetime.now(dt.UTC),
+    )
+
+    task: Mapped[CouncilSession] = relationship("CouncilSession", back_populates="jobs")
+    worker: Mapped[WorkerRegistration | None] = relationship("WorkerRegistration")
+
+
+class PhaseExecution(Base):
+    """Audit record for each workflow phase on a task."""
+
+    __tablename__ = "phase_executions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    task_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("council_sessions.id"), nullable=False
+    )
+    phase_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    phase_number: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(
+        String(32), default="pending"
+    )  # pending|running|completed|failed|skipped
+    summary: Mapped[str] = mapped_column(Text, default="")
+    metadata_json: Mapped[dict | list] = mapped_column(JSON, default=_empty_json_dict)
+    started_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    task: Mapped[CouncilSession] = relationship("CouncilSession", back_populates="phase_executions")
+
+
+class OrchestraEvent(Base):
+    """Persistent event log — all actions are reproducible and auditable."""
+
+    __tablename__ = "orchestra_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    task_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    project_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    worker_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    job_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    agent_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    payload: Mapped[dict | list] = mapped_column(JSON, default=_empty_json_dict)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: dt.datetime.now(dt.UTC)
     )

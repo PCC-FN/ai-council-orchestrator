@@ -6,7 +6,7 @@ import { Badge } from "../ui/Badge";
 const NAV = [
   { to: "/", label: "Dashboard", end: true, icon: "▦" },
   { to: "/projects", label: "Projekte", icon: "▤" },
-  { to: "/sessions/new", label: "Neue Session", icon: "＋" },
+  { to: "/sessions/new", label: "Neues Feature", icon: "＋" },
 ];
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
@@ -17,13 +17,13 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       <div className="px-2 pb-4">
         <div className="flex items-center gap-2">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-sm font-bold text-white">
-            AC
+            AO
           </span>
           <div>
             <p className="text-sm font-semibold leading-tight text-slate-900 dark:text-slate-100">
-              AI Council
+              AI Orchestra
             </p>
-            <p className="text-xs text-slate-500">Coding Orchestrator</p>
+            <p className="text-xs text-slate-500">Multi-Agent Betriebssystem</p>
           </div>
         </div>
       </div>

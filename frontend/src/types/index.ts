@@ -77,6 +77,9 @@ export type CouncilSession = {
   normalized_task: string;
   status: string;
   current_round: string;
+  current_phase: string;
+  iteration_count: number;
+  max_iterations: number;
   created_at: string;
   updated_at: string;
   agent_responses: AgentResponse[];
@@ -106,6 +109,7 @@ export type SessionInput = {
 };
 
 export type RuntimeSettings = {
+  product?: string;
   compose2_mode: "manual" | "api";
   use_mock_providers: boolean;
   mock_active: boolean;
