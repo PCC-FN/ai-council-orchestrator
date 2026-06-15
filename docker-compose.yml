@@ -1,0 +1,17 @@
+name: ai-council-orchestrator
+services:
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - council_data:/data
+    environment:
+      DATABASE_URL: sqlite+aiosqlite:////data/council.db
+    env_file:
+      - .env
+
+volumes:
+  council_data: {}
