@@ -27,8 +27,8 @@ export interface GitStatus {
 import { isGitWorkTree } from "./path-security.js";
 
 export async function runGit(cwd: string, args: string[]): Promise<string> {
-  const [stdout] = await execFileAsync("git", args, cwd);
-  return stdout.trim();
+  const stdout = await execFileAsync("git", args, cwd);
+  return String(stdout ?? "").trim();
 }
 
 export async function getGitStatus(cwd: string): Promise<GitStatus> {
