@@ -117,3 +117,35 @@ async def seed_if_empty() -> None:
         )
         db.add(session)
         await db.commit()
+
+
+async def seed_auth_users() -> None:
+    """Create bootstrap admin when no users exist."""
+    import os
+
+    from app.auth.service import AuthService, hash_token
+    from app.config import get_settings
+    from app.models.auth_models import ROLE_ADMIN, OrchestraUser
+    from app.models.db_models import AppSetting
+
+    settings = get_settings()
+    async with SessionLocal() as db:
+        count = await db.scalar(select(func.count()).select_from(OrchestraUser))
+        if (count or 0) > 0:
+            return
+        preset = os.environ.get("ORCHESTRA_ADMIN_TOKEN", "").strip()
+        if preset:
+            db.add(
+                OrchestraUser(
+                    username="admin",
+                    display_name="Administrator",
+                    role=ROLE_ADMIN,
+                    token_hash=hash_token(preset),
+                )
+            )
+        elif settings.auth_required:
+            _user, token = await AuthService(db).create_user(
+                username="admin", role=ROLE_ADMIN, display_name="Administrator"
+            )
+            db.add(AppSetting(key="bootstrap_admin_token", value=token))
+        await db.commit()

@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     max_project_file_bytes: int = 512_000
 
     use_mock_providers: bool = False
+    max_automatic_review_rounds: int = 3
+    vibe_auto_review: bool = True
+    auth_required: bool = False
 
 
 @lru_cache

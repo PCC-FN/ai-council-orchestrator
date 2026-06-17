@@ -7,6 +7,7 @@ const NAV = [
   { to: "/", label: "Dashboard", end: true, icon: "▦" },
   { to: "/projects", label: "Projekte", icon: "▤" },
   { to: "/sessions/new", label: "Neues Feature", icon: "＋" },
+  { to: "/vibe", label: "Vibe Coding", icon: "⌘" },
   { to: "/settings", label: "Einstellungen", icon: "⚙" },
 ];
 

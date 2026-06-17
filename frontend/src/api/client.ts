@@ -3,6 +3,17 @@
 // API keys here — those stay server-side only.
 export const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "/api";
 
+const AUTH_TOKEN_KEY = "orchestra_auth_token";
+
+export function getAuthToken(): string {
+  return localStorage.getItem(AUTH_TOKEN_KEY) ?? "";
+}
+
+export function setAuthToken(token: string): void {
+  if (token.trim()) localStorage.setItem(AUTH_TOKEN_KEY, token.trim());
+  else localStorage.removeItem(AUTH_TOKEN_KEY);
+}
+
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -13,12 +24,14 @@ export class ApiError extends Error {
 }
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getAuthToken();
   let res: Response;
   try {
     res = await fetch(`${API_BASE}${path}`, {
       ...init,
       headers: {
         "Content-Type": "application/json",
+        ...(token ? { "X-Orchestra-Token": token } : {}),
         ...(init?.headers ?? {}),
       },
     });

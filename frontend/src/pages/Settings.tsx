@@ -5,6 +5,8 @@ import { Field, Input } from "../components/ui/Field";
 import { Badge } from "../components/ui/Badge";
 import { LoadingState, ErrorState, InlineError } from "../components/common/States";
 import { Api } from "../api/endpoints";
+import { authApi } from "../api/auth";
+import { getAuthToken, setAuthToken } from "../api/client";
 import { invalidateSettingsCache } from "../hooks/useSettings";
 import type { ProviderKeyInfo, RuntimeSettings, SettingsUpdate } from "../types";
 
@@ -40,6 +42,18 @@ export default function SettingsPage() {
   const [anthropicModel, setAnthropicModel] = useState("");
   const [compose2Url, setCompose2Url] = useState("");
   const [secrets, setSecrets] = useState<Record<string, SecretDraft>>({});
+  const [authToken, setAuthTokenDraft] = useState(getAuthToken());
+  const [authInfo, setAuthInfo] = useState<string | null>(null);
+
+  const saveAuthToken = async () => {
+    setAuthToken(authToken);
+    try {
+      const p = await authApi.permissions();
+      setAuthInfo(`Rolle: ${p.role}${p.is_authenticated ? "" : " (lokal ohne Auth)"}`);
+    } catch {
+      setAuthInfo(authToken ? "Token gespeichert (Verbindung prüfen)" : "Token entfernt — lokaler Modus");
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -278,6 +292,30 @@ export default function SettingsPage() {
                   disabled={compose2Mode !== "api"}
                 />
               </Field>
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+            <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+              Vibe Coding — Zugang
+            </h2>
+            <p className="mt-1 text-xs text-slate-500">
+              API-Token für Rollen (Admin, Entwickler, Betrachter). Header:{" "}
+              <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">X-Orchestra-Token</code>
+            </p>
+            <div className="mt-4 space-y-3">
+              <Field label="Orchestra Token">
+                <Input
+                  type="password"
+                  value={authToken}
+                  onChange={(e) => setAuthTokenDraft(e.target.value)}
+                  placeholder="Token einfügen…"
+                />
+              </Field>
+              <Button size="sm" onClick={saveAuthToken}>
+                Token speichern
+              </Button>
+              {authInfo && <p className="text-xs text-slate-600 dark:text-slate-300">{authInfo}</p>}
             </div>
           </section>
 
