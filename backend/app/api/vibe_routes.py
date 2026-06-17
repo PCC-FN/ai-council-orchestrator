@@ -20,6 +20,7 @@ from app.auth.service import (
 from app.api.vibe_websocket import VibeWSManager
 from app.core.vibe_events import EVENT_WORKER_CONNECTED, EVENT_WORKER_DISCONNECTED
 from app.config import get_settings
+from app.database import get_db
 from app.models.db_models import WorkerRegistration
 from app.models.vibe_models import CodingJob, WorkerProject
 from app.schemas.vibe_schemas import (
