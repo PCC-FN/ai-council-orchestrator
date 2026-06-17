@@ -5,6 +5,22 @@ Windows-Worker für AI Orchestra Vibe Coding. Baut eine **ausgehende** WebSocket
 ## Schnellstart
 
 ```powershell
+cd workers\vibe-coding-worker
+.\start-worker.ps1
+```
+
+Das Skript erledigt automatisch:
+
+- `.env` aus `.env.example` anlegen (falls fehlend)
+- `npm install` (falls nötig)
+- Worker-Token beim Server registrieren und in `.env` speichern
+- Worker starten und WebSocket-Verbindung aufbauen
+
+Bei `AUTH_REQUIRED=true` einmalig `ORCHESTRA_ADMIN_TOKEN` in `.env` setzen (oder `-AdminToken "…"` übergeben).
+
+### Manuell (ohne Skript)
+
+```powershell
 cd workers/vibe-coding-worker
 npm install
 
@@ -36,6 +52,14 @@ npm run dev
 
 Ohne CLI: Mock-Adapter verwenden (`ADAPTER_TYPE=mock`).
 
-## Konfiguration
+## Projekte / Git-Repos
 
-Siehe `.env.example`.
+Freigegebene Wurzeln in `.env`:
+
+```env
+PROJECT_ROOTS=F:\
+```
+
+Mehrere Pfade mit Semikolon trennen. Der Worker durchsucht diese Ordner **rekursiv** nach Git-Repos (Ordner mit `.git`) und meldet sie an AI Orchestra. Schwere Verzeichnisse (`node_modules`, `dist`, …) werden uebersprungen.
+
+Nach Aenderung Worker neu starten: `.\start-worker.ps1`

@@ -142,10 +142,12 @@ class VibeCodingService:
         self, worker_id: str, projects: list[dict[str, str]]
     ) -> list[WorkerProject]:
         synced: list[WorkerProject] = []
+        seen_paths: set[str] = set()
         for p in projects:
             local_path = p.get("local_path", "")
             if not local_path:
                 continue
+            seen_paths.add(local_path)
             existing = await self.db.scalar(
                 select(WorkerProject).where(
                     WorkerProject.worker_id == worker_id,
@@ -166,6 +168,15 @@ class VibeCodingService:
                 )
                 self.db.add(wp)
                 synced.append(wp)
+
+        if seen_paths:
+            r = await self.db.execute(
+                select(WorkerProject).where(WorkerProject.worker_id == worker_id)
+            )
+            for wp in r.scalars().all():
+                if wp.local_path not in seen_paths:
+                    wp.is_enabled = False
+
         await self.db.flush()
         return synced
 
