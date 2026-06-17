@@ -43,9 +43,24 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     let detail = `${res.status}`;
     try {
       const data = await res.json();
-      detail = (data?.detail as string) ?? JSON.stringify(data);
+      const raw = data?.detail;
+      if (typeof raw === "string") detail = raw;
+      else if (Array.isArray(raw)) {
+        detail = raw.map((item) => item?.msg ?? JSON.stringify(item)).join("; ");
+      } else if (raw != null) {
+        detail = JSON.stringify(raw);
+      } else {
+        detail = JSON.stringify(data);
+      }
     } catch {
       detail = (await res.text().catch(() => "")) || res.statusText;
+    }
+    if (res.status === 502) {
+      detail = "Backend vorübergehend nicht erreichbar (Bad Gateway). Bitte in wenigen Sekunden erneut versuchen.";
+    } else if (res.status === 503) {
+      detail = "Backend vorübergehend nicht verfügbar. Bitte später erneut versuchen.";
+    } else if (res.status === 504) {
+      detail = "Zeitüberschreitung beim Backend — die Analyse dauert möglicherweise zu lange.";
     }
     throw new ApiError(res.status, detail);
   }

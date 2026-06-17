@@ -8,7 +8,24 @@ import { Button } from "../components/ui/Button";
 import { useTheme } from "../hooks/useTheme";
 import { useVibeJob, useVibeWorkers } from "../hooks/useVibeJob";
 import type { CodingMode, WorkerProject } from "../api/vibe";
+import { ApiError } from "../api/client";
 import { vibeApi } from "../api/vibe";
+
+async function withGatewayRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+  let last: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      last = err;
+      const retryable =
+        err instanceof ApiError && (err.status === 502 || err.status === 503) && i < attempts - 1;
+      if (!retryable) throw err;
+      await new Promise((resolve) => window.setTimeout(resolve, 1500 * (i + 1)));
+    }
+  }
+  throw last;
+}
 
 const MODES: { id: CodingMode; label: string; hint: string }[] = [
   { id: "direct", label: "Direkt", hint: "Schnell an Cursor, minimal strukturiert" },
@@ -58,15 +75,17 @@ export default function VibeCoding() {
     setBusy(true);
     setError(null);
     try {
-      let j = await vibeApi.createJob({
-        worker_id: workerId,
-        project_id: projectId,
-        prompt,
-        mode,
-      });
-      j = await vibeApi.analyzeJob(j.id);
+      let j = await withGatewayRetry(() =>
+        vibeApi.createJob({
+          worker_id: workerId,
+          project_id: projectId,
+          prompt,
+          mode,
+        }),
+      );
+      j = await withGatewayRetry(() => vibeApi.analyzeJob(j.id));
       if (j.status === "queued") {
-        j = await vibeApi.startJob(j.id);
+        j = await withGatewayRetry(() => vibeApi.startJob(j.id));
       }
       setActiveJobId(j.id);
       setJob(j);
@@ -85,7 +104,7 @@ export default function VibeCoding() {
     }
     setBusy(true);
     try {
-      const j = await vibeApi.sendMessage(activeJobId, text);
+      const j = await withGatewayRetry(() => vibeApi.sendMessage(activeJobId, text));
       setJob(j);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Senden fehlgeschlagen");
