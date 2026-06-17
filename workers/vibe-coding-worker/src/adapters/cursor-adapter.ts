@@ -221,7 +221,7 @@ export class CursorAdapter implements CodingAgentAdapter {
           }
         } else if (type === "tool_call") {
           const subtype = String(evt.subtype || "");
-          const tc = evt.tool_call as Record<string, Record<string, { args?: { path?: string } }>> | undefined;
+          const tc = evt.tool_call as { writeToolCall?: { args?: { path?: string } } } | undefined;
           const writePath = tc?.writeToolCall?.args?.path;
           if (subtype === "started" && writePath) {
             changedFiles.add(writePath);
