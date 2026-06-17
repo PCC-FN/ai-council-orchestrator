@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { Sidebar } from "../components/layout/Sidebar";
 import { VibeChatPanel } from "../components/vibe/VibeChatPanel";
 import { VibeDetailPanel } from "../components/vibe/VibeDetailPanel";
@@ -18,7 +19,7 @@ const MODES: { id: CodingMode; label: string; hint: string }[] = [
 
 export default function VibeCoding() {
   const { theme, toggle } = useTheme();
-  const { workers, refresh: refreshWorkers } = useVibeWorkers();
+  const { workers, refresh: refreshWorkers, authError } = useVibeWorkers();
   const [projects, setProjects] = useState<WorkerProject[]>([]);
   const [jobs, setJobs] = useState<Awaited<ReturnType<typeof vibeApi.listJobs>>>([]);
   const [workerId, setWorkerId] = useState<string | null>(null);
@@ -182,7 +183,7 @@ export default function VibeCoding() {
             ))}
           </div>
           <span className="text-xs text-slate-400">
-            {connected ? "● Live" : "○ Offline"}
+            {activeJobId ? (connected ? "Job live" : "Job offline") : null}
           </span>
           <Button variant="ghost" size="sm" onClick={toggle}>
             {theme === "dark" ? "☀" : "☾"}
@@ -191,6 +192,15 @@ export default function VibeCoding() {
             ↻
           </Button>
         </header>
+
+        {authError && (
+          <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
+            {authError}{" "}
+            <Link to="/settings" className="font-medium underline">
+              Zu den Einstellungen
+            </Link>
+          </div>
+        )}
 
         {error && (
           <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">

@@ -77,10 +77,24 @@ export function useVibeJob(jobId: string | null) {
 
 export function useVibeWorkers(pollMs = 10000) {
   const [workers, setWorkers] = useState<Awaited<ReturnType<typeof vibeApi.listWorkers>>>([]);
+  const [authError, setAuthError] = useState<string | null>(null);
   const timer = useRef<number>();
 
   const refresh = () => {
-    vibeApi.listWorkers().then(setWorkers).catch(() => {});
+    vibeApi
+      .listWorkers()
+      .then((rows) => {
+        setWorkers(rows);
+        setAuthError(null);
+      })
+      .catch((e: unknown) => {
+        const msg = e instanceof Error ? e.message : "Worker konnten nicht geladen werden";
+        if (msg.includes("401") || msg.toLowerCase().includes("authentifizierung")) {
+          setAuthError("Anmeldung erforderlich — Orchestra-Token unter Einstellungen speichern.");
+        } else {
+          setAuthError(msg);
+        }
+      });
   };
 
   useEffect(() => {
@@ -89,5 +103,5 @@ export function useVibeWorkers(pollMs = 10000) {
     return () => clearInterval(timer.current);
   }, [pollMs]);
 
-  return { workers, refresh };
+  return { workers, refresh, authError };
 }
