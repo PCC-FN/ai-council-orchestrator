@@ -24,6 +24,8 @@ export interface GitStatus {
   staged: string[];
 }
 
+import { isGitWorkTree } from "./path-security.js";
+
 export async function runGit(cwd: string, args: string[]): Promise<string> {
   const [stdout] = await execFileAsync("git", args, cwd);
   return stdout.trim();
@@ -52,12 +54,7 @@ export async function getGitStatus(cwd: string): Promise<GitStatus> {
 }
 
 export async function isGitRepo(cwd: string): Promise<boolean> {
-  try {
-    await runGit(cwd, ["rev-parse", "--git-dir"]);
-    return true;
-  } catch {
-    return false;
-  }
+  return isGitWorkTree(cwd);
 }
 
 export async function createStash(cwd: string, message: string): Promise<string | null> {

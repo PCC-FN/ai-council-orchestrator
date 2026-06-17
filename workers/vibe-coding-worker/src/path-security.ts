@@ -41,8 +41,43 @@ const SKIP_DIR_NAMES = new Set([
 ]);
 
 export function isGitRepository(dirPath: string): boolean {
+  return isGitWorkTree(dirPath);
+}
+
+function readConfiguredWorkTree(gitDir: string): string | null {
   try {
-    return fs.existsSync(path.join(dirPath, ".git"));
+    const configPath = path.join(gitDir, "config");
+    if (!fs.existsSync(configPath)) return null;
+    const config = fs.readFileSync(configPath, "utf8");
+    const match = config.match(/^\s*worktree\s*=\s*(.+)$/m);
+    return match ? normalizePath(match[1].trim()) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** True only when dirPath is the checkout root, not a bare repo or external worktree metadata. */
+export function isGitWorkTree(dirPath: string): boolean {
+  try {
+    const normalizedDir = normalizePath(dirPath);
+    const gitPath = path.join(dirPath, ".git");
+    if (!fs.existsSync(gitPath)) return false;
+
+    const stat = fs.statSync(gitPath);
+    if (stat.isDirectory()) {
+      if (!fs.existsSync(path.join(gitPath, "HEAD"))) return false;
+      const worktree = readConfiguredWorkTree(gitPath);
+      if (worktree && worktree !== normalizedDir) return false;
+      return true;
+    }
+
+    const gitFile = fs.readFileSync(gitPath, "utf8").trim();
+    if (!gitFile.startsWith("gitdir:")) return false;
+    const gitdir = normalizePath(path.resolve(dirPath, gitFile.slice("gitdir: ".length).trim()));
+    if (!fs.existsSync(path.join(gitdir, "HEAD"))) return false;
+    const worktree = readConfiguredWorkTree(gitdir);
+    if (worktree && worktree !== normalizedDir) return false;
+    return true;
   } catch {
     return false;
   }

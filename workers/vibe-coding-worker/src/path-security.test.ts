@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { discoverProjects, isPathWithinRoot, resolveProjectPath } from "../src/path-security.js";
+import { discoverProjects, isGitWorkTree, isPathWithinRoot, resolveProjectPath } from "../src/path-security.js";
 import { maskSecrets } from "../src/secret-mask.js";
 
 test("masks api keys", () => {
@@ -23,16 +23,23 @@ test("resolve project path", () => {
   assert.equal(resolveProjectPath("C:\\Other\\demo", ["C:\\Development"]), null);
 });
 
+function ensureBareGitDir(gitDir: string): void {
+  fs.mkdirSync(gitDir, { recursive: true });
+  if (!fs.existsSync(path.join(gitDir, "HEAD"))) {
+    fs.writeFileSync(path.join(gitDir, "HEAD"), "ref: refs/heads/main\n");
+  }
+}
+
 test("discovers nested git repositories", () => {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), "vibe-worker-"));
   try {
     const root = path.join(base, "root");
     const nested = path.join(root, "team", "app");
     fs.mkdirSync(nested, { recursive: true });
-    fs.mkdirSync(path.join(root, "standalone", ".git"), { recursive: true });
-    fs.mkdirSync(path.join(nested, ".git"), { recursive: true });
+    ensureBareGitDir(path.join(root, "standalone", ".git"));
+    ensureBareGitDir(path.join(nested, ".git"));
     fs.mkdirSync(path.join(root, "team", "node_modules", "pkg"), { recursive: true });
-    fs.mkdirSync(path.join(root, "team", "node_modules", "pkg", ".git"), { recursive: true });
+    ensureBareGitDir(path.join(root, "team", "node_modules", "pkg", ".git"));
 
     const found = discoverProjects([root]);
     const paths = found.map((p) => p.local_path);
@@ -52,15 +59,38 @@ test("skips configured git root and discovers child repositories", () => {
     const childB = path.join(root, "infrastructure-explorer");
     fs.mkdirSync(childA, { recursive: true });
     fs.mkdirSync(childB, { recursive: true });
-    fs.mkdirSync(path.join(root, ".git"), { recursive: true });
-    fs.mkdirSync(path.join(childA, ".git"), { recursive: true });
-    fs.mkdirSync(path.join(childB, ".git"), { recursive: true });
+    ensureBareGitDir(path.join(root, ".git"));
+    ensureBareGitDir(path.join(childA, ".git"));
+    ensureBareGitDir(path.join(childB, ".git"));
 
     const found = discoverProjects([root]);
     const paths = found.map((p) => p.local_path);
     assert.equal(paths.includes(root), false);
     assert.ok(paths.includes(childA));
     assert.ok(paths.includes(childB));
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test("rejects git metadata whose worktree points elsewhere", () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "vibe-worker-worktree-"));
+  try {
+    const drive = path.join(base, "drive");
+    const checkout = path.join(base, "checkout");
+    fs.mkdirSync(drive, { recursive: true });
+    fs.mkdirSync(checkout, { recursive: true });
+    fs.mkdirSync(path.join(drive, ".git"), { recursive: true });
+    fs.writeFileSync(path.join(drive, ".git", "HEAD"), "ref: refs/heads/main\n");
+    fs.writeFileSync(
+      path.join(drive, ".git", "config"),
+      `[core]\n\trepositoryformatversion = 0\n\tbare = false\n\tworktree = ${checkout.replaceAll("\\", "/")}\n`,
+    );
+    fs.mkdirSync(path.join(checkout, ".git"), { recursive: true });
+    fs.writeFileSync(path.join(checkout, ".git", "HEAD"), "ref: refs/heads/main\n");
+
+    assert.equal(isGitWorkTree(drive), false);
+    assert.equal(discoverProjects([drive]).length, 0);
   } finally {
     fs.rmSync(base, { recursive: true, force: true });
   }
