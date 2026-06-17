@@ -23,7 +23,6 @@ class VibeWSManager:
             conns.remove(ws)
 
     async def connect_worker(self, worker_id: str, ws: WebSocket) -> None:
-        await ws.accept()
         old = self._workers.get(worker_id)
         if old and old is not ws:
             try:

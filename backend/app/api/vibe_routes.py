@@ -599,6 +599,7 @@ async def vibe_worker_websocket(websocket: WebSocket, db: AsyncSession) -> None:
     ws_mgr = get_vibe_ws()
     svc = _vibe(db)
     worker_id: str | None = None
+    await websocket.accept()
     try:
         auth_raw = await websocket.receive_json()
         if auth_raw.get("type") != "auth":
