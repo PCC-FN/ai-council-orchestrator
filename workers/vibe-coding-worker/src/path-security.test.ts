@@ -43,3 +43,25 @@ test("discovers nested git repositories", () => {
     fs.rmSync(base, { recursive: true, force: true });
   }
 });
+
+test("skips configured git root and discovers child repositories", () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "vibe-worker-root-git-"));
+  try {
+    const root = path.join(base, "drive");
+    const childA = path.join(root, "ai-council-orchestrator");
+    const childB = path.join(root, "infrastructure-explorer");
+    fs.mkdirSync(childA, { recursive: true });
+    fs.mkdirSync(childB, { recursive: true });
+    fs.mkdirSync(path.join(root, ".git"), { recursive: true });
+    fs.mkdirSync(path.join(childA, ".git"), { recursive: true });
+    fs.mkdirSync(path.join(childB, ".git"), { recursive: true });
+
+    const found = discoverProjects([root]);
+    const paths = found.map((p) => p.local_path);
+    assert.equal(paths.includes(root), false);
+    assert.ok(paths.includes(childA));
+    assert.ok(paths.includes(childB));
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});

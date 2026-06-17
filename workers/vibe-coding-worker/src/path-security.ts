@@ -66,21 +66,17 @@ function projectDisplayName(repoPath: string, rootPath: string): string {
 function walkForGitRepos(
   dirPath: string,
   rootPath: string,
+  configuredRoots: Set<string>,
   projects: Map<string, { name: string; local_path: string; default_branch: string }>,
   depth: number,
   maxDepth: number,
 ): void {
   if (depth > maxDepth) return;
 
-  let entries: fs.Dirent[];
-  try {
-    entries = fs.readdirSync(dirPath, { withFileTypes: true });
-  } catch {
-    return;
-  }
+  const normalized = normalizePath(dirPath);
+  const isConfiguredRoot = configuredRoots.has(normalized);
 
-  if (isGitRepository(dirPath)) {
-    const normalized = normalizePath(dirPath);
+  if (isGitRepository(dirPath) && !isConfiguredRoot) {
     if (!projects.has(normalized)) {
       projects.set(normalized, {
         name: projectDisplayName(normalized, rootPath),
@@ -91,10 +87,24 @@ function walkForGitRepos(
     return;
   }
 
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dirPath, { withFileTypes: true });
+  } catch {
+    return;
+  }
+
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     if (shouldSkipDir(entry.name)) continue;
-    walkForGitRepos(path.join(dirPath, entry.name), rootPath, projects, depth + 1, maxDepth);
+    walkForGitRepos(
+      path.join(dirPath, entry.name),
+      rootPath,
+      configuredRoots,
+      projects,
+      depth + 1,
+      maxDepth,
+    );
   }
 }
 
@@ -103,11 +113,12 @@ export function discoverProjects(
   maxDepth = 16,
 ): Array<{ name: string; local_path: string; default_branch: string }> {
   const projects = new Map<string, { name: string; local_path: string; default_branch: string }>();
+  const configuredRoots = new Set(roots.map((root) => normalizePath(root)));
 
   for (const root of roots) {
     const rootPath = normalizePath(root);
     if (!fs.existsSync(rootPath) || !fs.statSync(rootPath).isDirectory()) continue;
-    walkForGitRepos(rootPath, rootPath, projects, 0, maxDepth);
+    walkForGitRepos(rootPath, rootPath, configuredRoots, projects, 0, maxDepth);
   }
 
   return [...projects.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
